@@ -68,14 +68,14 @@ def save_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, da
 
 def append_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, data_column_names: list, index_names: list, 
                     h5_key: str = "2dsweep"):
-    """Build a 
+    """Build a multi-dimensional pandas dataframe as data comes in. This method can be used for 1d, 2d and arbitrary dimensional sweeps.
 
     Args:
         filepath (str): Filepath with h5 extension.
-        data_array (np.ndarray): _description_
-        index_arrays (list): _description_
-        data_column_names (list): _description_
-        index_names (list): _description_
+        data_array (np.ndarray): Data array with dimensions n x m, where n, m >= 1
+        index_arrays (list): List of index arrays, or floats if a voltage is constant. These are the sweep axes values.
+        data_column_names (list): The names of the quantities being recorded, e.g. magnitude and phase of a signal
+        index_names (list): Names of the sweep axes (e.g. which voltages are swept)
         h5_key (str, optional): h5 key. Defaults to "2dsweep".
 
     Returns:
@@ -85,7 +85,6 @@ def append_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, 
     keys = get_keys(filepath)
     existing_df = open_file(filepath, h5_key)
     
-    # This is the simplest 2d sweep, where we save only a single row of data per sweep index. Thus, data is concatenated row by row.
     df = pd.DataFrame(data_array, 
                         index=pd.MultiIndex.from_product(index_arrays, names=index_names), 
                         columns=data_column_names)
