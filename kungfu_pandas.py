@@ -3,26 +3,34 @@ import numpy as np
 from typing import List
 import time, os, h5py
 
-def create_path_filename(measurement_name: str, path: str = None):
-    """Creates a filename with date and timestamp.
+def create_path_filename(measurement_name: str, path: str = None, chunking: bool = True):
+    """Creates a filename with date and timestamp. If chunking set to True, filepath with index starting with 0000 will be returned.
 
     Args:
         measurement_name (str): Measurement name. A string to identify the type of measurement done.
         path (str, optional): Path that contains the data folder. A subfolder will be created here with 20xx-xx-xx subfolder structure. Defaults to None.
-
+        chunking (bool): Determines initial filepath name. If set to False, filepath will start with datetime and measurement name.
+                            If set to True, filepath will follow format "0000_datetime_measurement_name"
     Returns:
         _type_: Path with h5 extension.
     """
+
     path = 'data/' if path is None else path
     subdir = os.path.join(path, time.strftime("%Y-%m-%d"))
     try:
         os.mkdir(subdir)
     except Exception:
         pass
+
     timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
-    filename = timestr + "_" + measurement_name + ".h5"
-    filepath = os.path.join(subdir, filename)
+    
+    if chunking:
+        chunk_dir = create_temp_dir(measurement_name, subdir)
+        filepath = get_working_temp_file(chunk_dir)
+    else:
+        filepath = os.path.join(subdir, filename)
     return filepath
+    
 
 def save_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, data_column_names: list, index_names: list, 
                   h5_key: str = "ndsweep"):
@@ -171,3 +179,101 @@ def get_keys(filepath: str):
         keys = []
     
     return keys
+
+def get_working_temp_file(temp_local_dir: str):
+    """Opens a file and returns the pandas DataFrame object
+
+    Args:
+        temp_local_dir (str): Local directory where we will temporarily store data.
+    Returns:
+        filepath (str): Updated filepath if input path is too big"""
+    
+    if os.listdir(temp_local_dir) == []:
+        timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
+        filename = str("{:04d}".format(0)+timestr +'_temp_'+measurement_type + ".h5")
+        filepath = os.path.join(temp_local_dir, filename)
+
+    else:
+        filename = sorted(os.listdir(temp_local_dir))[-1]
+        filepath = os.path.join(temp_local_dir, filename)
+    return filepath
+
+
+def check_filesize(filepath: str, max_filesize: int):
+    """Takes in a filepath, checks its size and returns either the same filepath, or generates a new filepath 
+    if the input path is too large.
+
+    Args:
+        filepath (str): Filepath with h5 extension.
+        filesize (int): max size of files that are temporarily saved
+
+    Returns:
+        filepath (str): Updated filepath used to store data"""
+    
+    file_size = os.stat(filepath).st_size
+    print(file_size)
+    if file_size<=max_filesize:
+        return filepath
+    elif file_size>max_filesize:
+        print("bigger than max size")
+        index_prev_str = filepath.split("\\")[-1].split("_")[0]
+        index_prev = int(index_prev_str)
+        index_curr = index_prev+1
+        index_curr_str = "{:04d}".format(index_curr)
+        new_filepath = filepath.replace(index_prev_str, index_curr_str)
+        return new_filepath
+    else:
+        pass
+
+
+def create_temp_dir(measurement_name, local_dir):#where you wanna save the data locally. local data folder
+    time_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+    temp_local_dir = os.path.join(local_dir, time_str+"_"+measurement_name)
+    os.mkdir(temp_local_dir)
+    return temp_local_dir
+
+def get_unique_keys(temp_local_dir):
+    files_ext= temp_local_dir +"/"+"*.h5" 
+    temp_files = glob.glob(files_ext)
+    all_keys = []
+    for file in temp_files:
+        keys = get_keys(file)
+        for key in keys:
+            all_keys.append(key)
+    return list(set(all_keys))
+    # return all_keys
+
+def get_files_by_key(temp_local_dir, keys_list):
+    files_ext= temp_local_dir +"/"+"*.h5" 
+    temp_files = glob.glob(files_ext)
+    # full_df_list = [[]]*len(keys_list)
+    df_dict = {}
+    for i, key in enumerate(keys_list):
+        df_list = []
+        # print(f"looking for {key}")
+        for file in temp_files:
+            f = h5py.File(file, 'r')
+            file_keys = list(f.keys())
+            for file_key in file_keys:
+                if file_key==key:
+                    # print(f"found a match between {file_key} and {key} in {file}")
+                    df = open_file(file, h5_key=key)
+                    df_list.append(df)
+                else:
+                    pass
+        df_dict[key] = df_list
+    return df_dict
+
+def consolidate_and_move_files(dfdict,  perm_path):
+    dflist =[]
+    for key, val in dfdict.items():
+        print(key)
+        df = pd.concat(val)
+        dflist.append(df)
+        df.to_hdf(perm_path, key=key, mode='a')
+    return dflist
+
+def save_permanent(temp_local_dir, permpath):
+    keys = get_unique_keys(temp_local_dir)
+    dfdict = get_files_by_key(temp_local_dir, keys)
+    consolidate_and_move_files(dfdict, permpath)
