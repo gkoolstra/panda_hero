@@ -2,35 +2,36 @@ import pandas as pd
 import numpy as np
 from typing import List
 import time, os, h5py
-
-def create_path_filename(measurement_name: str, path: str = None, chunking: bool = True):
-    """Creates a filename with date and timestamp. If chunking set to True, filepath with index starting with 0000 will be returned.
+import glob
+import yaml
+def create_path_filename(measurement_name: str, path: str = None, chip_info_path: str = None):
+    """Creates a filename with date and timestamp.
 
     Args:
         measurement_name (str): Measurement name. A string to identify the type of measurement done.
         path (str, optional): Path that contains the data folder. A subfolder will be created here with 20xx-xx-xx subfolder structure. Defaults to None.
-        chunking (bool): Determines initial filepath name. If set to False, filepath will start with datetime and measurement name.
-                            If set to True, filepath will follow format "0000_datetime_measurement_name"
+
     Returns:
         _type_: Path with h5 extension.
     """
-
     path = 'data/' if path is None else path
     subdir = os.path.join(path, time.strftime("%Y-%m-%d"))
     try:
         os.mkdir(subdir)
     except Exception:
         pass
-
     timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
-    
-    if chunking:
-        chunk_dir = create_temp_dir(measurement_name, subdir)
-        filepath = get_working_temp_file(chunk_dir)
+    if chip_info_path:
+        with open(chip_info_path, 'r') as f:
+            chip_info_dict = yaml.safe_load(f)
+        chip_name = chip_info_dict['id']
+        filename = timestr + "_" + chip_name + "_" + measurement_name + ".h5"
+        filepath = os.path.join(subdir, filename)   
+        save_dict(filepath, chip_info_dict, 'chip_info')
     else:
-        filepath = os.path.join(subdir, filename)
+        filename = timestr + "_" + measurement_name + ".h5"
+        filepath = os.path.join(subdir, filename)   
     return filepath
-    
 
 def save_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, data_column_names: list, index_names: list, 
                   h5_key: str = "ndsweep"):
@@ -102,10 +103,19 @@ def append_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, 
         new_df = pd.concat([existing_df, df])
         new_df.sort_index()
         new_df.to_hdf(filepath, key=h5_key, mode='a')
-        
     else:
         # This is the first time we access the key, no need to append.
         df.to_hdf(filepath, key=h5_key, mode='a')
+        
+    # Prevent exponential filesize growth 
+    temp_filepath = filepath[:-4]+"_temp.h5"
+    os.rename(filepath, temp_filepath)
+    keys = get_keys(temp_filepath)
+    for key in keys:
+        existing_df = open_file(temp_filepath, key)
+        existing_df.to_hdf(filepath, key=key, mode='a')
+    
+    os.remove(temp_filepath)
     
     return None
     
@@ -180,7 +190,10 @@ def get_keys(filepath: str):
     
     return keys
 
-def get_working_temp_file(temp_local_dir: str):
+###NOTE: THE METHODS DEFINED BELOW ARE ALL USED FOR DATA CHUNKING STORAGE. SIGNIFICANT SLOWDOWN OCCURS WHEN LARGE DATASETS ARE SAVED TO A NETWORK DRIVE.
+# "CHUNKING" DATASETS INTO SMALLER FILES, STORING THEM LOCALLY, AND COMBINING THEM INTO A SINGLE H5 ONCE A SCAN IS COMPLETE IS FASTER. 
+
+def get_working_temp_file(temp_local_dir: str, chip_info_path: str = None):
     """Opens a file and returns the pandas DataFrame object
 
     Args:
@@ -189,13 +202,23 @@ def get_working_temp_file(temp_local_dir: str):
         filepath (str): Updated filepath if input path is too big"""
     
     if os.listdir(temp_local_dir) == []:
-        timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
-        filename = str("{:04d}".format(0)+timestr +'_temp_'+measurement_type + ".h5")
+        print("empty directory!")
+        time_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+        filename = str("0000_"+time_str +'_temp'+ ".h5")
         filepath = os.path.join(temp_local_dir, filename)
-
     else:
         filename = sorted(os.listdir(temp_local_dir))[-1]
         filepath = os.path.join(temp_local_dir, filename)
+
+    if chip_info_path:
+        print("there is an info path!")
+        with open(chip_info_path, 'r') as f:
+            chip_info_dict = yaml.safe_load(f)
+            chip_name = chip_info_dict['id'] 
+            print("saving chip info!")
+            save_dict(filepath, chip_info_dict, 'chip_info')
+    else:
+        pass
     return filepath
 
 
@@ -226,13 +249,33 @@ def check_filesize(filepath: str, max_filesize: int):
         pass
 
 
-def create_temp_dir(measurement_name, local_dir):#where you wanna save the data locally. local data folder
+def create_temp_dir(measurement_name: str , local_dir:str , chip_info_path: str=None):
+    """Creates a local directory for saving data
+    Args:
+        measurement_name (str): what you want to call the experiment, eg: 'unloading_sweep' 
+        local_dir (str) : path where data will be stored locally
+    Returns:
+        filepath (str) : Directory with measurement_name and date/time in path name"""
     time_str = time.strftime("%Y-%m-%d_%H-%M-%S")
-    temp_local_dir = os.path.join(local_dir, time_str+"_"+measurement_name)
+    if chip_info_path:
+        with open(chip_info_path, 'r') as f:
+            chip_info_dict = yaml.safe_load(f)
+        chip_name = chip_info_dict['id']
+        temp_local_dir = os.path.join(local_dir, time_str + "_" + chip_name + "_" + measurement_name)
+    else:
+        temp_local_dir = os.path.join(local_dir, time_str+"_"+measurement_name)
     os.mkdir(temp_local_dir)
     return temp_local_dir
 
+
 def get_unique_keys(temp_local_dir):
+    """Used once multiple datasets from same scan are saved. 
+    Looks through all the keys of those data sets, and extracts a list of all unique keys in those files
+    
+    Args:
+        temp_local_dir (str): pathname to look into
+    Returns:
+        keys list (list): list of all unique keys found in h5 files in temp_local_dir"""
     files_ext= temp_local_dir +"/"+"*.h5" 
     temp_files = glob.glob(files_ext)
     all_keys = []
@@ -244,6 +287,14 @@ def get_unique_keys(temp_local_dir):
     # return all_keys
 
 def get_files_by_key(temp_local_dir, keys_list):
+    """Looks through a direcotry and generates a dictionary of pandas dataframes that are separated by key value
+    Args:
+        temp_local_dir (str): directory to search through
+        keys_list (list): list of key names (strings) to extract dataframes from each h5 file in the temp_local_dir
+
+    Returns:
+        df_dict (dict): Python dictionary of dataframes, organized by the h5 file key names
+    """
     files_ext= temp_local_dir +"/"+"*.h5" 
     temp_files = glob.glob(files_ext)
     # full_df_list = [[]]*len(keys_list)
@@ -265,15 +316,25 @@ def get_files_by_key(temp_local_dir, keys_list):
     return df_dict
 
 def consolidate_and_move_files(dfdict,  perm_path):
+    """Takes in a python dictionary of pandas dataframes organized by key names, combines all dataframes into a single h5 
+    and saves to permanent location
+    Args:
+        dfdict (dict): dictionary of pandas dataframes. Key names are the keys that will define the groups in the h5
+        perm_path (str): directory where consolidated h5 file will be stored. (QNAS)
+    Returns:
+        Returns list of all dataframes found in the dfdict
+        """
     dflist =[]
     for key, val in dfdict.items():
-        print(key)
+        # print(key)
         df = pd.concat(val)
         dflist.append(df)
         df.to_hdf(perm_path, key=key, mode='a')
     return dflist
 
 def save_permanent(temp_local_dir, permpath):
+    """This method combines multiple methods. Takes in the temporary local directory to which chunked data has been saved, 
+    looks for dataframes of the same key, combines those dataframes, and saves everything as a single H5 file in a permanent location"""
     keys = get_unique_keys(temp_local_dir)
     dfdict = get_files_by_key(temp_local_dir, keys)
     consolidate_and_move_files(dfdict, permpath)
