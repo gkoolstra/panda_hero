@@ -1,6 +1,13 @@
 # Kungfu Pandas Tools
 Simple tool set for saving pandas datasets. Simple use cases: 
 
+## Create a path filename
+If chip info yaml path is included, chip ID will be added to filename
+```
+chip_info_path = r'/Volumes/EeroQ/Projects/004_Device2.0/config/chipinfo_v241.yaml'
+filepath = kp.create_path_filename(measurement_name='1dsweep', path= None, chip_info_path = chip_info_path)
+```
+
 ## Save a 1d sweep
 ```
 fpoints = np.linspace(1, 9, 101)
@@ -41,6 +48,8 @@ Append to the same dictionary with more data:
 more_settings = {"setting_1" : 1.0, "setting_2" : False, "setting_3" : "test1"}
 kp.append_dict(filepath, more_settings, h5_key="settings")
 ```
+
+
 
 ## Chunk a datafile
 Opening large files (>10 MB) while incrementally saving data to the NAS can be time consuming and slow down the data acquisition process. 
