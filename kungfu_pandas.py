@@ -10,7 +10,7 @@ def create_path_filename(measurement_name: str, path: str = None, chip_info_path
     Args:
         measurement_name (str): Measurement name. A string to identify the type of measurement done.
         path (str, optional): Path that contains the data folder. A subfolder will be created here with 20xx-xx-xx subfolder structure. Defaults to None.
-        chip_info_path (str, optional): Path that contains the device information in a yaml file. Saves dictionary in yaml to path as pandas dataframe. Defaults to None.  
+        chip_info_path (str, optional): Path that contains the device information in a yaml file. Saves dictionary in yaml to path as pandas dataframe and adds chip ID to filename. Defaults to None.  
     Returns:
         _type_: Path with h5 extension.
     """
