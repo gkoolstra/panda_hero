@@ -5,12 +5,12 @@ import time, os, h5py
 import glob
 import yaml
 def create_path_filename(measurement_name: str, path: str = None, chip_info_path: str = None):
-    """Creates a filename with date and timestamp.
+    """Creates a filename with date and timestamp. Saves device information to file if information is included.
 
     Args:
         measurement_name (str): Measurement name. A string to identify the type of measurement done.
         path (str, optional): Path that contains the data folder. A subfolder will be created here with 20xx-xx-xx subfolder structure. Defaults to None.
-
+        chip_info_path (str, optional): Path that contains the device information in a yaml file. Saves dictionary in yaml to path as pandas dataframe and adds chip ID to filename. Defaults to None.  
     Returns:
         _type_: Path with h5 extension.
     """
@@ -194,10 +194,11 @@ def get_keys(filepath: str):
 # "CHUNKING" DATASETS INTO SMALLER FILES, STORING THEM LOCALLY, AND COMBINING THEM INTO A SINGLE H5 ONCE A SCAN IS COMPLETE IS FASTER. 
 
 def get_working_temp_file(temp_local_dir: str, chip_info_path: str = None):
-    """Opens a file and returns the pandas DataFrame object
+    """Called when chunking a file. Opens a file and returns the pandas DataFrame object. 
 
     Args:
-        temp_local_dir (str): Local directory where we will temporarily store data.
+        temp_local_dir (str): Local directory where data is saved.
+        chip_info_path (str, optional): Path that contains the device information in a yaml file. Saves dictionary in yaml to filepath in temp_local_dir as pandas dataframe. Defaults to None.  
     Returns:
         filepath (str): Updated filepath if input path is too big"""
     
@@ -211,11 +212,9 @@ def get_working_temp_file(temp_local_dir: str, chip_info_path: str = None):
         filepath = os.path.join(temp_local_dir, filename)
 
     if chip_info_path:
-        print("there is an info path!")
         with open(chip_info_path, 'r') as f:
             chip_info_dict = yaml.safe_load(f)
             chip_name = chip_info_dict['id'] 
-            print("saving chip info!")
             save_dict(filepath, chip_info_dict, 'chip_info')
     else:
         pass
@@ -254,6 +253,7 @@ def create_temp_dir(measurement_name: str , local_dir:str , chip_info_path: str=
     Args:
         measurement_name (str): what you want to call the experiment, eg: 'unloading_sweep' 
         local_dir (str) : path where data will be stored locally
+        chip_info_path (str, optional): Path to yaml file with device information. Defaults to None.
     Returns:
         filepath (str) : Directory with measurement_name and date/time in path name"""
     time_str = time.strftime("%Y-%m-%d_%H-%M-%S")
