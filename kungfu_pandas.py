@@ -15,15 +15,21 @@ def create_path_filename(measurement_name: str, path: str = None, chip_info_path
         _type_: Path with h5 extension.
     """
     path = 'data/' if path is None else path
-    subdir = os.path.join(path, time.strftime("%Y-%m-%d"))
+    
+    if chip_info_path:
+        with open(chip_info_path, 'r') as f:
+            chip_info_dict = yaml.safe_load(f)
+        setup_name = chip_info_dict['setup'].lower()
+    else:
+        setup_name = ""
+
+    subdir = os.path.join(path, time.strftime("%Y-%m-%d"), setup_name)
     try:
         os.mkdir(subdir)
     except Exception:
         pass
     timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
     if chip_info_path:
-        with open(chip_info_path, 'r') as f:
-            chip_info_dict = yaml.safe_load(f)
         chip_name = chip_info_dict['id']
         filename = timestr + "_" + chip_name + "_" + measurement_name + ".h5"
         filepath = os.path.join(subdir, filename)   
@@ -233,7 +239,6 @@ def check_filesize(filepath: str, max_filesize: int):
         filepath (str): Updated filepath used to store data"""
     
     file_size = os.stat(filepath).st_size
-    print(file_size)
     if file_size<=max_filesize:
         return filepath
     elif file_size>max_filesize:
