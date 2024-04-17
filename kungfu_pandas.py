@@ -15,15 +15,21 @@ def create_path_filename(measurement_name: str, path: str = None, chip_info_path
         _type_: Path with h5 extension.
     """
     path = 'data/' if path is None else path
-    subdir = os.path.join(path, time.strftime("%Y-%m-%d"))
+    
+    if chip_info_path:
+        with open(chip_info_path, 'r') as f:
+            chip_info_dict = yaml.safe_load(f)
+        setup_name = chip_info_dict['setup'].lower()
+    else:
+        setup_name = ""
+
+    subdir = os.path.join(path, time.strftime("%Y-%m-%d"), setup_name)
     try:
-        os.mkdir(subdir)
+        os.makedirs(subdir)
     except Exception:
         pass
     timestr = time.strftime("%Y-%m-%d_%H-%M-%S")
     if chip_info_path:
-        with open(chip_info_path, 'r') as f:
-            chip_info_dict = yaml.safe_load(f)
         chip_name = chip_info_dict['id']
         filename = timestr + "_" + chip_name + "_" + measurement_name + ".h5"
         filepath = os.path.join(subdir, filename)   
@@ -32,7 +38,6 @@ def create_path_filename(measurement_name: str, path: str = None, chip_info_path
         filename = timestr + "_" + measurement_name + ".h5"
         filepath = os.path.join(subdir, filename)   
     return filepath
-
 def save_nd_sweep(filepath: str, data_array : np.ndarray, index_arrays: list, data_column_names: list, index_names: list, 
                   h5_key: str = "ndsweep"):
     """Save a multi-dimensional sweep where all data is already available. For saving the data piecewise as it is being recorded, see `append_2d_sweep`
