@@ -4,6 +4,7 @@ from typing import List
 import time, os, h5py
 import glob
 import yaml
+
 def create_path_filename(measurement_name: str, path: str = None, chip_info_path: str = None):
     """Creates a filename with date and timestamp. Saves device information to file if information is included.
 
@@ -145,8 +146,6 @@ def save_dict(filepath: str, data_dict : dict, h5_key: str="dictionary", mode: s
     else:
         df.to_hdf(filepath, key=h5_key, mode='a')
     
-
-
 def append_dict(filepath: str, data_dict : dict, h5_key: str="dictionary"):
     """Append a dictionary to an existing h5_key in an h5 file located in filepath.
 
@@ -199,7 +198,7 @@ def get_keys(filepath: str):
 ###NOTE: THE METHODS DEFINED BELOW ARE ALL USED FOR DATA CHUNKING STORAGE. SIGNIFICANT SLOWDOWN OCCURS WHEN LARGE DATASETS ARE SAVED TO A NETWORK DRIVE.
 # "CHUNKING" DATASETS INTO SMALLER FILES, STORING THEM LOCALLY, AND COMBINING THEM INTO A SINGLE H5 ONCE A SCAN IS COMPLETE IS FASTER. 
 
-def get_working_temp_file(temp_local_dir: str, chip_info_path: str = None):
+def get_working_temp_file(temp_local_dir: str, chip_info_path: str=None) -> str:
     """Called when chunking a file. Opens a file and returns the pandas DataFrame object. 
 
     Args:
@@ -227,7 +226,7 @@ def get_working_temp_file(temp_local_dir: str, chip_info_path: str = None):
     return filepath
 
 
-def check_filesize(filepath: str, max_filesize: int):
+def check_filesize(filepath: str, max_filesize: int) -> str:
     """Takes in a filepath, checks its size and returns either the same filepath, or generates a new filepath 
     if the input path is too large.
 
@@ -253,7 +252,7 @@ def check_filesize(filepath: str, max_filesize: int):
         pass
 
 
-def create_temp_dir(measurement_name: str , local_dir:str , chip_info_path: str=None):
+def create_temp_dir(measurement_name: str , local_dir:str , chip_info_path: str=None) -> str:
     """Creates a local directory for saving data
     Args:
         measurement_name (str): what you want to call the experiment, eg: 'unloading_sweep' 
@@ -273,7 +272,7 @@ def create_temp_dir(measurement_name: str , local_dir:str , chip_info_path: str=
     return temp_local_dir
 
 
-def get_unique_keys(temp_local_dir):
+def get_unique_keys(temp_local_dir: str) -> list:
     """Used once multiple datasets from same scan are saved. 
     Looks through all the keys of those data sets, and extracts a list of all unique keys in those files
     
@@ -289,7 +288,6 @@ def get_unique_keys(temp_local_dir):
         for key in keys:
             all_keys.append(key)
     return list(set(all_keys))
-    # return all_keys
 
 def get_files_by_key(temp_local_dir, keys_list):
     """Looks through a direcotry and generates a dictionary of pandas dataframes that are separated by key value
@@ -302,17 +300,14 @@ def get_files_by_key(temp_local_dir, keys_list):
     """
     files_ext= temp_local_dir +"/"+"*.h5" 
     temp_files = glob.glob(files_ext)
-    # full_df_list = [[]]*len(keys_list)
     df_dict = {}
     for i, key in enumerate(keys_list):
         df_list = []
-        # print(f"looking for {key}")
         for file in temp_files:
             f = h5py.File(file, 'r')
             file_keys = list(f.keys())
             for file_key in file_keys:
                 if file_key==key:
-                    # print(f"found a match between {file_key} and {key} in {file}")
                     df = open_file(file, h5_key=key)
                     df_list.append(df)
                 else:
@@ -320,7 +315,7 @@ def get_files_by_key(temp_local_dir, keys_list):
         df_dict[key] = df_list
     return df_dict
 
-def consolidate_and_move_files(dfdict,  perm_path):
+def consolidate_and_move_files(dfdict: dict,  perm_path: str) -> list:
     """Takes in a python dictionary of pandas dataframes organized by key names, combines all dataframes into a single h5 
     and saves to permanent location
     Args:
@@ -331,13 +326,12 @@ def consolidate_and_move_files(dfdict,  perm_path):
         """
     dflist =[]
     for key, val in dfdict.items():
-        # print(key)
         df = pd.concat(val)
         dflist.append(df)
         df.to_hdf(perm_path, key=key, mode='a')
     return dflist
 
-def save_permanent(temp_local_dir, permpath):
+def save_permanent(temp_local_dir: str, permpath: str) -> None:
     """This method combines multiple methods. Takes in the temporary local directory to which chunked data has been saved, 
     looks for dataframes of the same key, combines those dataframes, and saves everything as a single H5 file in a permanent location"""
     keys = get_unique_keys(temp_local_dir)

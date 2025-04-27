@@ -1,14 +1,43 @@
-# Kungfu Pandas Tools
-Simple tool set for saving pandas datasets. Simple use cases: 
+# Panda Hero
 
-## Create a path filename
-If chip info yaml path is included, chip ID will be added to filename
+![](/images/cover_image.png)
+
+Panda Hero is a simple tool set for saving pandas datasets, which can handle multi-variable parameter sweeps. The advantage of this tool is that the resulting pandas dataframe objects can be easily opened, and viewed in a jupyter notebook. All standard pandas manipulation techniques can be used on datasets. There are a few simple use cases discussed below to help you get started with Kungfu Pandas. To get started use this:
+
 ```
-chip_info_path = r'/Volumes/EeroQ/Projects/004_Device2.0/config/chipinfo_v241.yaml'
-filepath = kp.create_path_filename(measurement_name='1dsweep', path= None, chip_info_path = chip_info_path)
+from panda_hero import kungfu_pandas as kp
 ```
 
-## Save a 1d sweep
+## Automatic data organization with Panda Hero
+### Vanilla
+Setting up your filepath is the first step for every experiment. We use the following subfolder convention for organizing data:
+`path > [yyyy-mm-dd] > [yyyy-mm-dd_hh-mm-ss_measurement_name.h5]`
+
+By supplying `path` to `create_path_filename` the subfolders are automatically generated. Easy!
+```
+filepath = kp.create_path_filename(measurement_name=..., path=...)
+```
+
+### With a file containing chip information
+However, additional info about the device and measurement is often provided in `chip_info_path`, which is a yaml file containing keys such as setup and chip_ID. If provided, a new subfolder will be added to allow for multiple setups saving in the same directory, and a chip ID will be added to the h5 filename. In this case we have the following path organization:
+`path > [yyyy-mm-dd] > [setup] > [yyyy-mm-dd_hh-mm-ss_chipID_measurement_name.h5]`
+
+Usage example: the following code snippet
+```
+chip_info_path = r'Z:/Projects/011_Device3.0/config/chipinfo_hamburger_cell.yaml'
+data_path = r'Z:/Projects/011_Device3.0/data'
+measurement_name = 'close_the_dot'
+
+filepath = kp.create_path_filename(measurement_name=measurement_name, path=data_path, chip_info_path=chip_info_path)
+```
+will result in the following file structure
+![Datafolder structure in Panda Hero](/images/path_organization.png)
+
+## Example: Save a 1D sweep
+For simple experiments such as 
+- Simple VNA scan with only one trace. Each frequency point is only related to one magnitude and one phase point.
+
+Example usage:
 ```
 fpoints = np.linspace(1, 9, 101)
 mag = np.random.rand(101)
@@ -19,10 +48,15 @@ save_nd_sweep(filepath=filepath, data_array=np.c_[mag, phase], data_column_names
               h5_key="vna_spectrum")
 ```
 
-## Build a 2d data set
-Simulate a sweep over some arrays x1 and x2 (as one would do in experiment). Then generate some fake data point with 3 quantities, imagine these are the freq, mag, phase from a VNA trace at a single frequency.
+## Example: Build a multi-indexed data set
+For more complicated experiments such as 
+- Repeated VNA scans as function of voltage. 
+- Power sweeps, temperature sweeps, etc.
+- Very complicated sweeps with any number of sweep variables
+
+Example usage:
+Imagine an experiment where you sweep over arrays x1 and x2 while recording 3 quantities (in `data_array`). You could imagine these are the freq, mag, phase from a VNA trace.
 ```
-# x1 and x2 are imaginary voltage sweep axes
 x1 = np.linspace(0, 0.5, 21)
 x2 = np.linspace(0.5, -0.5, 11)
 
@@ -36,7 +70,14 @@ for X1 in x1:
                            h5_key="build3d")
 ```
 
-## Save and append to dictionaries
+Some helpful hints:
+- `index_names` must be a list with the same number of elements as `index_arrays`
+- All elements in `index_arrays` must have a length (they can't be floats). 
+- The number of `data_column_names` must match the second dimension of `data_array`
+- You can create an entirely different group in the same datafile by supplying a different `h5_key`. 
+
+## Example: Save and append to dictionaries
+For keeping track of settings stored in a dictionary form.
 ```
 # Create a dictionary with some settings
 settings = {"setting_1" : 3.0, "setting_2" : True, "setting_3" : "another_datatype"}
@@ -51,28 +92,39 @@ kp.append_dict(filepath, more_settings, h5_key="settings")
 
 
 
-## Chunk a datafile
-Opening large files (>10 MB) while incrementally saving data to the NAS can be time consuming and slow down the data acquisition process. 
-Chunking allows users to check the working file size each time data is saved. If the current working filepath contains too much data, a new filepath is generated and data is saved there instead.
-Follow the steps below when chunking.
+## Big data files: chunking
+Opening large files (>10 MB) while incrementally saving data to network locations can be time consuming and slow down the data acquisition process. 
+Chunking allows users to check the working file size each time data is saved. If the current data file exceeds a user defined maximum size, a new filepath is generated and data is saved there instead.
+
+Please follow the steps below to use chunking.
 
 ```
-# Generate a directory where chunked files will be saved
+# Generate a directory where chunked files will be saved. For optimal speed, this directory should not be on a network. 
 measurement_name = 'chunked_measurement'
 local_dir = '/Users/eeroq1/data'
 chip_info_path = '/Users/eeroq/Documents/v41_dev.yaml'
-temp_local_dir = kp.create_temp_dir(measurement_name = measurement_name , local_dir = local_dir, chip_info_path: '/Users/eeroq/Documents/v41_dev.yaml')
 
-# Generate a working filepath to save data to. 
-filepath = kp.get_working_temp_file(temp_local_dir = temp_local_dir, chip_info_path= chip_info_path)
-```
-Once an initial filepath has been generated, data can be saved to that path. File size checking should occur somewhere in the data acquisition code: 
-```
-#Check that the current working file is smaller than the indicated file size in bytes. If it is larger, the filepath is updated.
-max_filesize = 5e6 
-filepath = kp.check_filesize(filepath, max_filesize)
+# This is a local (non-network) directory, not a filepath
+temp_local_dir = kp.create_temp_dir(measurement_name=measurement_name, local_dir=local_dir, chip_info_path=chip_info_path)
+
+# Generate a working filepath, i.e. subfolder, for saving the data. 
+filepath = kp.get_working_temp_file(temp_local_dir=temp_local_dir, chip_info_path=chip_info_path)
 ```
 
+Once an initial filepath has been generated, data can be saved to that path. File size checking should occur periodically (e.g. each iteration of a `for`-loop) in the data acquisition code: 
 
+```
+filepath = kp.check_filesize(filepath, max_filesize=5e6)
+```
+
+Finally, at the end of the measurement, we run the following piece of code
+```
+# Consolidate file chunks
+out_file = os.path.join(temp_local_dir, f"{os.path.split(temp_local_dir)[-1]}_consolidated.h5")
+kp.save_permanent(temp_local_dir, out_file)
+
+dest = os.path.join(permanent_datapath, os.path.split(out_file)[-1])
+shutil.copy(out_file, dest)
+```
 
 
